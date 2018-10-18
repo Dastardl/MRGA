@@ -1,0 +1,164 @@
+/*
+  LiquidCrystal Library - scrollDisplayLeft() and scrollDisplayRight()
+
+ Demonstrates the use a 16x2 LCD display.  The LiquidCrystal
+ library works with all LCD displays that are compatible with the
+ Hitachi HD44780 driver. There are many of them out there, and you
+ can usually tell them by the 16-pin interface.
+
+ This sketch prints "Hello World!" to the LCD and uses the
+ scrollDisplayLeft() and scrollDisplayRight() methods to scroll
+ the text.
+
+  The circuit:
+ * LCD RS pin to digital pin 12
+ * LCD Enable pin to digital pin 11
+ * LCD D4 pin to digital pin 5
+ * LCD D5 pin to digital pin 4
+ * LCD D6 pin to digital pin 3
+ * LCD D7 pin to digital pin 2
+ * LCD R/W pin to ground
+ * 10K resistor:
+ * ends to +5V and ground
+ * wiper to LCD VO pin (pin 3)
+
+ Library originally added 18 Apr 2008
+ by David A. Mellis
+ library modified 5 Jul 2009
+ by Limor Fried (http://www.ladyada.net)
+ example added 9 Jul 2009
+ by Tom Igoe
+ modified 22 Nov 2010
+ by Tom Igoe
+ modified 7 Nov 2016
+ by Arturo Guadalupi
+
+ This example code is in the public domain.
+
+ http://www.arduino.cc/en/Tutorial/LiquidCrystalScroll
+
+*/
+
+// include the library code:
+#include <LiquidCrystal.h>
+
+// This sketch code is based on the RPLIDAR driver library provided by RoboPeak
+#include <RPLidar.h>
+
+// You need to create an driver instance
+RPLidar lidar;
+
+#define RPLIDAR_MOTOR 8 // The PWM pin for control the speed of RPLIDAR's motor. \
+                        // This pin should connected with the RPLIDAR's MOTOCTRL signal
+
+// initialize the library by associating any needed LCD interface pin
+// with the arduino pin number it is connected to
+const int rs = 12, en = 11, d4 = 5, d5 = 4, d6 = 3, d7 = 2;
+LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
+
+#define INSPECT_ANGLE 18
+#define MIN_ANGLE 360-INSPECT_ANGLE
+#define MAX_ANGLE INSPECT_ANGLE
+#define MIN_DISTANCE 300
+#define DATA_COUNT 2*INSPECT_ANGLE
+float data[DATA_COUNT];
+int count = 0;
+bool isDriving = true;
+
+void setup()
+{
+    // bind the RPLIDAR driver to the arduino hardware serial
+    lidar.begin(Serial);
+    // set pin modes
+    pinMode(RPLIDAR_MOTOR, OUTPUT);
+
+    // set up the LCD's number of columns and rows:
+    lcd.begin(16, 2);
+    // Print a message to the LCD.
+    lcd.print("Awesome  Metal");
+    lcd.setCursor(0, 1);
+    lcd.print("Pants");
+    for (int i = 0; i < DATA_COUNT; i++)
+    {
+        data[i] = 0;
+    }
+    delay(500);
+}
+
+RPLidarMeasurement point;
+float currentAngle;
+float currentDistance;
+int angleTest;
+float distanceTest;
+int compareAngle;
+void loop()
+{
+    if (IS_OK(lidar.waitPoint()))
+    {
+        point = lidar.getCurrentPoint();
+        currentAngle = point.angle;       //anglue value in degree
+        currentDistance = point.distance; //distance value in mm unit
+        compareAngle = (int)(currentAngle + MAX_ANGLE) % 360;
+        if (compareAngle < DATA_COUNT) {
+            data[(int)compareAngle] = currentDistance;
+        }
+
+
+        //perform data processing here...
+        // currentMinDistance = 999999;
+        // for (int i = driveDirection - inspectAngle; i <= driveDirection + inspectAngle; i++) {
+        //     int distance = data[wrap(i)];
+        //     if (distance < currentMinDistance && distance != 0) {
+        //         currentMinDistance = distance;
+        //     }
+        // }
+        // if (currentMinDistance <= minDistance) {
+        //     isDriving = false;
+        // } else {
+        //     isDriving = true;
+        // }
+
+        count++;
+        count = count % 500;
+        if (count == 0)
+        {
+            angleTest = -1;
+            distanceTest = 99999;
+            for (int i = 0; i < DATA_COUNT; i++) {
+                if (data[i] <= distanceTest && data[i] != 0) {
+                    angleTest = i;
+                    distanceTest = data[i];
+                }
+            }
+            isDriving = distanceTest > MIN_DISTANCE;
+
+            lcd.clear();
+            lcd.print("Min: " + String(distanceTest));
+            lcd.setCursor(0, 1);
+            lcd.print(isDriving ? "Driving " : "Stopping");
+        }
+        // if (count == 0)
+        // {
+        //     lcd.clear();
+        //     lcd.print("Min: " + String(currentMinDistance));
+        //     lcd.setCursor(0, 1);
+        //     lcd.print(isDriving ? "Driving " : "Stopping");
+        // }
+    }
+    else
+    {
+        analogWrite(RPLIDAR_MOTOR, 0); //stop the rplidar motor
+
+        // try to detect RPLIDAR...
+        rplidar_response_device_info_t info;
+        if (IS_OK(lidar.getDeviceInfo(info, 100)))
+        {
+            // detected...
+            lidar.startScan();
+
+            // start motor rotating at max allowed speed
+            analogWrite(RPLIDAR_MOTOR, 255);
+            delay(1000);
+        }
+    }
+}
